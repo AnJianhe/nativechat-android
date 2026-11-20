@@ -60,6 +60,19 @@ public class ChatActivity extends Activity implements Engine.Listener {
     private static final int PAGE = 40;
     private int hidden;
     private final Handler main = new Handler(Looper.getMainLooper());
+    // Bounded work and cache prevent rapid scrolling from accumulating image decodes.
+    private final java.util.concurrent.ThreadPoolExecutor thumbnails =
+        new java.util.concurrent.ThreadPoolExecutor(1, 1, 0L,
+            java.util.concurrent.TimeUnit.MILLISECONDS,
+            new java.util.concurrent.ArrayBlockingQueue<Runnable>(24),
+            new java.util.concurrent.ThreadPoolExecutor.DiscardOldestPolicy());
+    private final android.util.LruCache<String, Bitmap> thumbnailCache =
+        new android.util.LruCache<String, Bitmap>((int) Math.min(4 * 1024 * 1024L,
+            Runtime.getRuntime().maxMemory() / 32)) {
+            @Override protected int sizeOf(String key, Bitmap value) {
+                return value.getByteCount();
+            }
+        };
 
     private Db db;
     private Engine engine;
@@ -296,6 +309,8 @@ public class ChatActivity extends Activity implements Engine.Listener {
     @Override
     protected void onDestroy() {
         main.removeCallbacks(streamWatcher);
+        thumbnails.shutdownNow();
+        thumbnailCache.evictAll();
         if (engine != null) engine.close();
         if (recognizer != null) {
             recognizer.destroy();
@@ -826,7 +841,7 @@ public class ChatActivity extends Activity implements Engine.Listener {
         new Thread(() -> {
             Bitmap bitmap = decode(target, max);
             runOnUiThread(() -> {
-                if (isFinishing() || isDestroyed()) {
+                if (isFinishing() || isDestroyed() || !dialog.isShowing()) {
                     if (bitmap != null) {
                         bitmap.recycle();
                     }
@@ -1311,6 +1326,7 @@ public class ChatActivity extends Activity implements Engine.Listener {
         public View getView(int position, View convertView, ViewGroup parent) {
             LinearLayout row = (LinearLayout) (convertView != null ? convertView
                 : getLayoutInflater().inflate(R.layout.item_message, parent, false));
+            row.setTag(new Object()); // Invalidate asynchronous work for the previous binding.
             row.removeAllViews();
             row.setGravity(Gravity.START);
             int index = indexAt(position);
@@ -1486,42 +1502,107 @@ public class ChatActivity extends Activity implements Engine.Listener {
         // UserMessage.module.css: max-width: calc(100% - 68px)、padding 10px 16px、radius 22px
         int maxWidth = getResources().getDisplayMetrics().widthPixels - (int) dp(68);
         row.setPadding(0, 0, 0, (int) dp(16));
-        LinearLayout bubble = new LinearLayout(this);
-        bubble.setOrientation(LinearLayout.VERTICAL);
-        GradientDrawable background = new GradientDrawable();
-        background.setColor(palette.bubbleUser);
-        background.setCornerRadius(dp(22));
-        bubble.setBackground(background);
-        bubble.setPadding((int) dp(16), (int) dp(10), (int) dp(16), (int) dp(10));
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        params.gravity = Gravity.END;
-        bubble.setLayoutParams(params);
-
         for (Msg.FileAtt file : message.files) {
-            TextView chip = new TextView(this);
-            chip.setTextSize(13f);
-            chip.setTextColor(palette.text);
-            chip.setText((file.isImage ? "🖼  " : "📄  ") + file.name + "  "
-                + Util.formatSize(file.size));
-            chip.setMaxWidth(maxWidth);
-            chip.setPadding(0, 0, 0, (int) dp(4));
+            View attachment;
             if (file.isImage) {
-                // 缩略图按需：只有点开才读盘解码，列表里不加载任何位图
-                chip.setOnClickListener(view -> showImage(file));
+                ImageView image = new ImageView(this);
+                int side = dp(128);
+                image.setLayoutParams(new LinearLayout.LayoutParams(side, side));
+                image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                GradientDrawable shape = new GradientDrawable();
+                shape.setColor(palette.bubbleUser);
+                shape.setCornerRadius(dp(14));
+                image.setBackground(shape);
+                image.setClipToOutline(true);
+                image.setContentDescription(file.name);
+                image.setOnClickListener(view -> showImage(file));
+                loadThumbnail(row, image, file, side);
+                attachment = image;
+            } else {
+                LinearLayout card = new LinearLayout(this);
+                card.setGravity(Gravity.CENTER_VERTICAL);
+                card.setPadding(dp(12), dp(10), dp(12), dp(10));
+                GradientDrawable shape = new GradientDrawable();
+                shape.setColor(palette.bubbleUser);
+                shape.setCornerRadius(dp(14));
+                card.setBackground(shape);
+                TextView icon = new TextView(this);
+                icon.setText("📄");
+                icon.setTextSize(22f);
+                card.addView(icon);
+                LinearLayout details = new LinearLayout(this);
+                details.setOrientation(LinearLayout.VERTICAL);
+                details.setPadding(dp(10), 0, 0, 0);
+                TextView name = new TextView(this);
+                name.setText(file.name);
+                name.setTextColor(palette.text);
+                name.setTextSize(14f);
+                name.setSingleLine(true);
+                name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                name.setMaxWidth(Math.max(dp(80), maxWidth - dp(70)));
+                details.addView(name);
+                TextView size = new TextView(this);
+                size.setText(Util.formatSize(file.size));
+                size.setTextColor(palette.textDim);
+                size.setTextSize(12f);
+                details.addView(size);
+                card.addView(details);
+                attachment = card;
             }
-            bubble.addView(chip);
+            LinearLayout.LayoutParams attachmentParams = new LinearLayout.LayoutParams(
+                file.isImage ? dp(128) : ViewGroup.LayoutParams.WRAP_CONTENT,
+                file.isImage ? dp(128) : ViewGroup.LayoutParams.WRAP_CONTENT);
+            attachmentParams.gravity = Gravity.END;
+            attachmentParams.bottomMargin = dp(6);
+            row.addView(attachment, attachmentParams);
         }
-        TextView text = new TextView(this);
-        text.setTextSize(16f);
-        text.setTextColor(palette.text);
-        // 16px/24px
-        text.setLineSpacing(dp(4), 1.25f);
-        text.setText(message.content);
-        text.setMaxWidth(maxWidth);
-        bubble.addView(text);
-        row.addView(bubble);
+        if (message.content != null && !message.content.isEmpty()) {
+            TextView text = new TextView(this);
+            text.setTextSize(16f);
+            text.setTextColor(palette.text);
+            text.setLineSpacing(dp(4), 1.25f);
+            text.setText(message.content);
+            text.setMaxWidth(maxWidth - dp(32));
+            text.setPadding(dp(16), dp(10), dp(16), dp(10));
+            GradientDrawable background = new GradientDrawable();
+            background.setColor(palette.bubbleUser);
+            background.setCornerRadius(dp(22));
+            text.setBackground(background);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            params.gravity = Gravity.END;
+            row.addView(text, params);
+        }
         row.addView(action("编辑", view -> edit(message)));
+    }
+
+    private void loadThumbnail(LinearLayout row, ImageView image, Msg.FileAtt file, int side) {
+        File target = new Attachments(this).local(file);
+        if (target == null) return;
+        String key = target.getAbsolutePath() + ":" + target.lastModified() + ":" + side;
+        Bitmap cached = thumbnailCache.get(key);
+        if (cached != null) {
+            image.setImageBitmap(cached);
+            return;
+        }
+        Object binding = row.getTag();
+        java.lang.ref.WeakReference<LinearLayout> rowRef = new java.lang.ref.WeakReference<>(row);
+        java.lang.ref.WeakReference<ImageView> imageRef = new java.lang.ref.WeakReference<>(image);
+        thumbnails.execute(() -> {
+            Bitmap bitmap = decode(target, side * 2);
+            if (bitmap == null) return;
+            main.post(() -> {
+                LinearLayout currentRow = rowRef.get();
+                ImageView currentImage = imageRef.get();
+                if (isFinishing() || isDestroyed() || currentRow == null || currentImage == null
+                    || currentRow.getTag() != binding || currentImage.getParent() != currentRow) {
+                    bitmap.recycle();
+                    return;
+                }
+                thumbnailCache.put(key, bitmap);
+                currentImage.setImageBitmap(bitmap);
+            });
+        });
     }
 
     private void bindAssistant(LinearLayout row, Msg message) {
