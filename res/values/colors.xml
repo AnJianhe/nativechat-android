@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#FF0F0F0F</color>
+    <color name="composer">#FF1E1E1E</color>
+    <color name="surface">#FF1E1E1E</color>
+    <color name="card">#FF292929</color>
+    <color name="text">#FFEDEDEF</color>
+    <color name="text_dim">#FF9A9A9E</color>
+    <color name="stroke">#FF2E2E2E</color>
+    <color name="accent">#FF5E85FF</color>
+    <color name="bubble_user">#FF2A2A2E</color>
+</resources>

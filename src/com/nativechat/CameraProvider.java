@@ -1,0 +1,49 @@
+package com.nativechat;
+
+import android.content.ContentProvider;
+import android.content.ContentValues;
+import android.database.Cursor;
+import android.database.MatrixCursor;
+import android.net.Uri;
+import android.os.ParcelFileDescriptor;
+import android.provider.OpenableColumns;
+import java.io.File;
+import java.io.FileNotFoundException;
+
+/** Private, grant-only provider for a single temporary camera capture. */
+public final class CameraProvider extends ContentProvider {
+    @Override public boolean onCreate() { return true; }
+
+    private File resolve(Uri uri) throws FileNotFoundException {
+        String name = uri.getLastPathSegment();
+        if (name == null || !name.matches("capture_[a-f0-9]{32}\\.jpg")) {
+            throw new FileNotFoundException("Invalid capture");
+        }
+        return new File(getContext().getCacheDir(), name);
+    }
+
+    @Override public ParcelFileDescriptor openFile(Uri uri, String mode) throws FileNotFoundException {
+        int flags = "r".equals(mode) ? ParcelFileDescriptor.MODE_READ_ONLY
+            : ParcelFileDescriptor.MODE_WRITE_ONLY | ParcelFileDescriptor.MODE_CREATE
+                | ParcelFileDescriptor.MODE_TRUNCATE;
+        return ParcelFileDescriptor.open(resolve(uri), flags);
+    }
+    @Override public String getType(Uri uri) { return "image/jpeg"; }
+    @Override public Cursor query(Uri uri, String[] projection, String selection, String[] args, String order) {
+        String[] cols = projection == null ? new String[]{OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE} : projection;
+        MatrixCursor cursor = new MatrixCursor(cols);
+        Object[] values = new Object[cols.length];
+        try {
+            File file = resolve(uri);
+            for (int i = 0; i < cols.length; i++) {
+                if (OpenableColumns.DISPLAY_NAME.equals(cols[i])) values[i] = file.getName();
+                else if (OpenableColumns.SIZE.equals(cols[i])) values[i] = file.length();
+            }
+            cursor.addRow(values);
+        } catch (FileNotFoundException ignored) { }
+        return cursor;
+    }
+    @Override public Uri insert(Uri uri, ContentValues values) { throw new UnsupportedOperationException(); }
+    @Override public int delete(Uri uri, String selection, String[] args) { throw new UnsupportedOperationException(); }
+    @Override public int update(Uri uri, ContentValues values, String selection, String[] args) { throw new UnsupportedOperationException(); }
+}
