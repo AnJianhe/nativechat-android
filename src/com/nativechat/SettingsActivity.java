@@ -11,6 +11,8 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.List;
+
 /** 设置页：账户（Key、地址、模型）、应用（字号、外观、快照）、数据（导入导出、清空）、关于。 */
 public class SettingsActivity extends Activity {
     private static final int REQUEST_EXPORT = 5001;
@@ -44,19 +46,24 @@ public class SettingsActivity extends Activity {
 
     @Override
     protected void onCreate(android.os.Bundle state) {
+        boolean dark = Palette.of(this).dark;
+        setTheme(dark ? R.style.NativeChatDark : R.style.NativeChatLight);
         super.onCreate(state);
         setContentView(R.layout.activity_settings);
         settings = new Settings(this);
         db = new Db(this);
 
         Palette palette = Palette.of(this);
-        findViewById(android.R.id.content).setBackgroundColor(palette.surface);
+        findViewById(android.R.id.content).setBackgroundColor(palette.dark ? palette.bg : 0xFFF1F3F6);
+        ((android.view.ViewGroup) findViewById(android.R.id.content)).getChildAt(0).setBackgroundColor(palette.dark ? palette.bg : 0xFFF1F3F6);
+        colorSettingsText((android.view.ViewGroup) findViewById(android.R.id.content), palette);
         for (int id : new int[]{R.id.card_account, R.id.card_app, R.id.card_data,
-            R.id.card_about}) {
+            R.id.card_about, R.id.card_context, R.id.card_experimental}) {
             android.graphics.drawable.GradientDrawable card =
                 new android.graphics.drawable.GradientDrawable();
             card.setColor(palette.dark ? palette.composer : 0xFFFFFFFF);
             card.setCornerRadius(getResources().getDisplayMetrics().density * 18);
+            card.setStroke(Math.max(1, (int) getResources().getDisplayMetrics().density), palette.stroke);
             View view = findViewById(id);
             if (view != null) {
                 view.setBackground(card);
@@ -64,6 +71,7 @@ public class SettingsActivity extends Activity {
         }
 
         findViewById(R.id.back).setOnClickListener(view -> finish());
+        findViewById(R.id.row_profiles).setOnClickListener(view -> showProfiles());
         findViewById(R.id.row_api_key).setOnClickListener(view -> editApiKey());
         findViewById(R.id.row_origin).setOnClickListener(view -> editOrigin());
         findViewById(R.id.row_verify).setOnClickListener(view -> verifyKey());
@@ -82,13 +90,142 @@ public class SettingsActivity extends Activity {
         findViewById(R.id.row_import).setOnClickListener(view -> pickImport());
         findViewById(R.id.row_clear).setOnClickListener(view -> confirmClear());
         findViewById(R.id.row_diag).setOnClickListener(view -> exportDiag());
+        findViewById(R.id.row_changelog).setOnClickListener(view -> showChangelog());
+        findViewById(R.id.row_adaptive_context).setOnClickListener(view -> toggleAdaptiveContext());
+        linkValuesToRows();
         refresh();
     }
 
+    private void colorSettingsText(android.view.ViewGroup parent, Palette palette) {
+        for (int i = 0; i < parent.getChildCount(); i++) {
+            View child = parent.getChildAt(i);
+            if (child instanceof android.view.ViewGroup) {
+                colorSettingsText((android.view.ViewGroup) child, palette);
+            } else if (child instanceof TextView) {
+                TextView text = (TextView) child;
+                String name = child.getId() == View.NO_ID ? "" : getResources().getResourceEntryName(child.getId());
+                boolean value = name.endsWith("_value");
+                text.setTextColor(value ? (palette.dark ? palette.textDim : 0xFF535B66) : palette.text);
+            }
+        }
+    }
+
+    private void linkValuesToRows() {
+        int[][] pairs = {
+            {R.id.api_key_value, R.id.row_api_key}, {R.id.origin_value, R.id.row_origin},
+            {R.id.model_value, R.id.row_model}, {R.id.font_value, R.id.row_font},
+            {R.id.theme_value, R.id.row_theme}, {R.id.location_value, R.id.row_location},
+            {R.id.language_value, R.id.row_language}, {R.id.auto_compact_value, R.id.row_auto_compact},
+            {R.id.compact_style_value, R.id.row_compact_style}, {R.id.compact_verify_value, R.id.row_compact_verify},
+            {R.id.context_limit_value, R.id.row_context_limit}, {R.id.temperature_value, R.id.row_temperature},
+            {R.id.history_thinking_value, R.id.row_history_thinking}, {R.id.diag_value, R.id.row_diag},
+            {R.id.adaptive_context_value, R.id.row_adaptive_context}
+        };
+        for (int[] pair : pairs) {
+            View row = findViewById(pair[1]);
+            findViewById(pair[0]).setOnClickListener(view -> row.performClick());
+            wrapAsRow(pair[0], pair[1]);
+        }
+    }
+
+    /**
+     * 把「标题 + 取值」包进一个整块可点的容器：
+     * 原来只有标题那一行能点，现在标题、取值以及两者之间的空隙都算同一行。
+     */
+    private void wrapAsRow(int titleId, int valueId) {
+        View title = findViewById(titleId);
+        View value = findViewById(valueId);
+        if (title == null || value == null || !(title.getParent() instanceof android.widget.LinearLayout)) {
+            return;
+        }
+        android.widget.LinearLayout parent = (android.widget.LinearLayout) title.getParent();
+        if (parent.indexOfChild(value) != parent.indexOfChild(title) + 1) {
+            return;   // 结构不是紧挨着就不动，避免打乱布局
+        }
+        int index = parent.indexOfChild(title);
+        LinearLayout wrap = new LinearLayout(this);
+        wrap.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (getResources().getDisplayMetrics().density * 8);
+        wrap.setPadding(0, pad, 0, pad);
+        parent.removeView(title);
+        parent.removeView(value);
+        wrap.addView(title, new LinearLayout.LayoutParams(-1, -2));
+        wrap.addView(value, new LinearLayout.LayoutParams(-1, -2));
+        wrap.setOnClickListener(view -> title.performClick());
+        parent.addView(wrap, index, new LinearLayout.LayoutParams(-1, -2));
+    }
+
+    private void showChangelog() {
+        final String[] versions = {"全部版本", "2.0.0", "2.0.0-rc1", "2.0.0-beta11", "2.0.0-beta",
+            "1.4.8", "1.4.7", "1.4.6", "1.4.5", "1.4.4", "1.4.2", "1.4.1", "1.4"};
+        final String[] channels = {"全部渠道", "正式", "beta", "rc", "dev", "其他"};
+        final String[] types = {"全部类型", "修复", "新功能"};
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (getResources().getDisplayMetrics().density * 20);
+        box.setPadding(pad, 0, pad, 0);
+        android.widget.Spinner version = new android.widget.Spinner(this);
+        android.widget.Spinner channel = new android.widget.Spinner(this);
+        android.widget.Spinner type = new android.widget.Spinner(this);
+        for (android.widget.Spinner spinner : new android.widget.Spinner[]{version, channel, type}) {
+            box.addView(spinner);
+        }
+        version.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, versions));
+        channel.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, channels));
+        type.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, types));
+        TextView details = new TextView(this);
+        details.setPadding(0, pad, 0, pad);
+        box.addView(details);
+        Runnable update = () -> {
+            StringBuilder result = new StringBuilder();
+            int v = version.getSelectedItemPosition();
+            int c = channel.getSelectedItemPosition();
+            int t = type.getSelectedItemPosition();
+            String[][] records = {
+                {"2.0.0", "正式", "新功能", "2.0 正式版：按需上下文、多模型档案、用量与价格、长图分片、应用内更新日志。"},
+                {"2.0.0-rc1", "rc", "修复", "界面修复合集（对应内部 beta2–beta10、beta12）：浅色改为淡蓝灰底与白胶囊、根视图背景跟随主题、麦克风与加号图标可见、用量费用两位小数、实验模式下压缩项置灰、设置项标题与状态整块可点击。"},
+                {"2.0.0-beta11", "beta", "新功能", "支持多模型配置档案：一个档案一套接口地址、Key 和模型；设置里可增删改，长按聊天标题可直接切换。"},
+                {"2.0.0-beta", "beta", "新功能", "按需上下文（最近 24 小时／按日期检索）、用量与价格、长图分片、应用内更新日志。"},
+                {"1.4.8", "正式", "修复", "调整输入区布局，避免发送键在窄屏被挤出。"},
+                {"1.4.7", "正式", "新功能", "聊天消息加入图片缩略图和文档卡片。"},
+                {"1.4.6", "正式", "新功能", "附件抽屉加入最近图片预览。"},
+                {"1.4.5", "正式", "新功能", "增加拍照入口及相机、相册、文件底部抽屉。"},
+                {"1.4.4", "正式", "修复", "时间写入本轮消息末尾，保留五段快照格式。"},
+                {"1.4.2", "正式", "修复", "恢复五段 latest_reminder 格式。"},
+                {"1.4.1", "正式", "新功能", "尝试向模型提供具体时间。"},
+                {"1.4", "正式", "新功能", "发布 1.4 版本。"}
+            };
+            String channelName = c == 0 ? "" : channels[c];
+            for (String[] record : records) {
+                if (v != 0 && !record[0].equals(versions[v])) continue;
+                if (c != 0 && !record[1].equals(channelName)) continue;
+                if (t == 1 && !"修复".equals(record[2])) continue;
+                if (t == 2 && !"新功能".equals(record[2])) continue;
+                if (result.length() > 0) result.append("\n");
+                result.append(record[0]).append("（").append(record[1]).append("）\n")
+                    .append(record[2]).append("：").append(record[3]).append("\n");
+            }
+            if (result.length() == 0) result.append("此筛选条件下无已记录条目。");
+            details.setText(result.toString());
+        };
+        android.widget.AdapterView.OnItemSelectedListener listener = new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent, View view, int position, long id) { update.run(); }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) { update.run(); }
+        };
+        version.setOnItemSelectedListener(listener);
+        channel.setOnItemSelectedListener(listener);
+        type.setOnItemSelectedListener(listener);
+        update.run();
+        Dialogs.builder(this).setTitle("更新日志").setView(box)
+            .setPositiveButton("关闭", null).show();
+    }
     private void refresh() {
         String key = settings.apiKey();
         String masked = key.isEmpty() ? "未设置"
             : key.length() <= 8 ? "****" : key.substring(0, 4) + "…" + key.substring(key.length() - 4);
+        Profiles.Profile profile = Profiles.active(settings);
+        ((TextView) findViewById(R.id.profiles_value)).setText(
+            profile.display() + (profile.apiKey.isEmpty() ? " · 未填 Key" : ""));
         ((TextView) findViewById(R.id.api_key_value)).setText(masked);
         ((TextView) findViewById(R.id.origin_value)).setText(settings.origin());
         ((TextView) findViewById(R.id.model_value)).setText(settings.model());
@@ -107,18 +244,41 @@ public class SettingsActivity extends Activity {
                 + "　0 最稳定，1 最发散，0.8 为默认");
         ((TextView) findViewById(R.id.context_limit_value)).setText(
             formatTokens(settings.contextLimit()) + " tokens　用于计算「剩余上下文」");
-        ((TextView) findViewById(R.id.auto_compact_value)).setText(
-            settings.autoCompact()
-                ? "已开启：接近上限时自动把较早的轮次压成摘要"
-                : "已关闭：超出上限时请求会直接报错");
+        boolean adaptive = settings.adaptiveContext();
+        setRowEnabled(R.id.row_auto_compact, R.id.auto_compact_value, !adaptive);
+        setRowEnabled(R.id.row_compact_style, R.id.compact_style_value, !adaptive);
+        setRowEnabled(R.id.row_compact_verify, R.id.compact_verify_value, !adaptive);
+        ((TextView) findViewById(R.id.auto_compact_value)).setText(adaptive
+            ? "已由实验性「按需上下文」接管，暂不可用"
+            : settings.autoCompact()
+            ? "已开启：接近上限时自动把较早的轮次压成摘要"
+            : "已关闭：超出上限时请求会直接报错");
         ((TextView) findViewById(R.id.compact_style_value)).setText(styleLabel(settings.compactStyle()));
         ((TextView) findViewById(R.id.compact_verify_value)).setText(
             settings.compactVerify()
                 ? "已开启：新摘要会向旧上下文追问，再据答案修订（多 3 次调用）"
                 : "已关闭：直接生成摘要，省 token");
+        ((TextView) findViewById(R.id.adaptive_context_value)).setText(
+            (settings.adaptiveContext() ? "已开启" : "已关闭（默认）")
+                + " · 实验功能，效果可能不稳定；关闭后使用常规上下文策略。");
         long size = Diag.size();
         ((TextView) findViewById(R.id.diag_value)).setText(size == 0 ? "暂无日志"
             : Util.formatSize(size) + " · 卡住或报错时导出，发给开发者排查");
+    }
+
+    /** 实验模式开启时，相关设置项置灰且不可点。 */
+    private void setRowEnabled(int rowId, int valueId, boolean enabled) {
+        View row = findViewById(rowId);
+        TextView value = findViewById(valueId);
+        float alpha = enabled ? 1f : 0.38f;
+        if (row != null) {
+            row.setEnabled(enabled);
+            row.setAlpha(alpha);
+            row.setClickable(enabled);
+        }
+        if (value != null) {
+            value.setAlpha(alpha);
+        }
     }
 
     private String fontLabel(int level) {
@@ -138,7 +298,7 @@ public class SettingsActivity extends Activity {
         LinearLayout box = new LinearLayout(this);
         box.setPadding(pad, pad, pad, 0);
         box.addView(input);
-        return new AlertDialog.Builder(this)
+        return Dialogs.builder(this)
             .setTitle(title)
             .setView(box)
             .setNegativeButton("取消", null)
@@ -149,14 +309,129 @@ public class SettingsActivity extends Activity {
     }
 
     private void editApiKey() {
-        field("API Key", settings.apiKey(), true, value ->
-            settings.raw().edit().putString(Settings.KEY_API, value).apply()).show();
+        field("API Key（当前档案）", settings.apiKey(), true, value -> {
+            List<Profiles.Profile> list = Profiles.all(settings);
+            Profiles.Profile active = Profiles.active(settings);
+            for (Profiles.Profile profile : list) {
+                if (profile.id.equals(active.id)) profile.apiKey = value;
+            }
+            Profiles.save(settings, list, active.id);
+        }).show();
     }
 
     private void editOrigin() {
-        field("接口地址", settings.origin(), false, value ->
-            settings.raw().edit().putString(Settings.KEY_ORIGIN,
-                value.isEmpty() ? Settings.DEFAULT_ORIGIN : value).apply()).show();
+        field("接口地址（当前档案）", settings.origin(), false, value -> {
+            List<Profiles.Profile> list = Profiles.all(settings);
+            Profiles.Profile active = Profiles.active(settings);
+            for (Profiles.Profile profile : list) {
+                if (profile.id.equals(active.id)) {
+                    profile.origin = value.isEmpty() ? Settings.DEFAULT_ORIGIN : value;
+                }
+            }
+            Profiles.save(settings, list, active.id);
+        }).show();
+    }
+
+    /** 档案列表：点按切换，长按编辑或删除。 */
+    private void showProfiles() {
+        final List<Profiles.Profile> list = Profiles.all(settings);
+        final Profiles.Profile active = Profiles.active(settings);
+        String[] items = new String[list.size() + 1];
+        for (int i = 0; i < list.size(); i++) {
+            items[i] = (list.get(i).id.equals(active.id) ? "✓ " : "   ") + list.get(i).display();
+        }
+        items[list.size()] = "＋ 新增档案…";
+        Dialogs.builder(this)
+            .setTitle("模型档案")
+            .setItems(items, (dialog, which) -> {
+                if (which == list.size()) {
+                    addProfile();
+                } else {
+                    Profiles.activate(settings, list.get(which).id);
+                    refresh();
+                }
+            })
+            .setNeutralButton("编辑当前", (dialog, which) -> editProfile(active))
+            .show();
+    }
+
+    private void addProfile() {
+        Profiles.Profile profile = new Profiles.Profile();
+        profile.name = "新档案";
+        profile.model = Prompt.DEFAULT_MODEL;
+        editProfile(profile);
+    }
+
+    private void editProfile(final Profiles.Profile profile) {
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = (int) (getResources().getDisplayMetrics().density * 20);
+        box.setPadding(pad, 0, pad, 0);
+        final EditText name = input(profile.name, false);
+        final EditText origin = input(profile.origin, false);
+        final EditText key = input(profile.apiKey, true);
+        final EditText model = input(profile.model, false);
+        box.addView(label("名称")); box.addView(name);
+        box.addView(label("接口地址")); box.addView(origin);
+        box.addView(label("API Key")); box.addView(key);
+        box.addView(label("模型")); box.addView(model);
+        Dialogs.builder(this)
+            .setTitle("配置档案")
+            .setView(box)
+            .setNegativeButton("取消", null)
+            .setNeutralButton("删除", (dialog, which) -> {
+                List<Profiles.Profile> list = Profiles.all(settings);
+                list.removeIf(item -> item.id.equals(profile.id));
+                if (list.isEmpty()) {
+                    list.add(new Profiles.Profile());
+                }
+                Profiles.save(settings, list, list.get(0).id);
+                refresh();
+            })
+            .setPositiveButton("保存", (dialog, which) -> {
+                List<Profiles.Profile> list = Profiles.all(settings);
+                boolean found = false;
+                for (Profiles.Profile item : list) {
+                    if (item.id.equals(profile.id)) {
+                        found = true;
+                        item.name = name.getText().toString().trim();
+                        item.origin = origin.getText().toString().trim().isEmpty()
+                            ? Settings.DEFAULT_ORIGIN : origin.getText().toString().trim();
+                        item.apiKey = key.getText().toString().trim();
+                        item.model = model.getText().toString().trim().isEmpty()
+                            ? Prompt.DEFAULT_MODEL : model.getText().toString().trim();
+                    }
+                }
+                if (!found) {
+                    profile.name = name.getText().toString().trim();
+                    profile.origin = origin.getText().toString().trim().isEmpty()
+                        ? Settings.DEFAULT_ORIGIN : origin.getText().toString().trim();
+                    profile.apiKey = key.getText().toString().trim();
+                    profile.model = model.getText().toString().trim().isEmpty()
+                        ? Prompt.DEFAULT_MODEL : model.getText().toString().trim();
+                    list.add(profile);
+                }
+                Profiles.save(settings, list, profile.id);
+                refresh();
+            })
+            .show();
+    }
+
+    private EditText input(String value, boolean password) {
+        EditText field = new EditText(this);
+        field.setText(value);
+        field.setSingleLine(true);
+        if (password) {
+            field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        }
+        return field;
+    }
+
+    private TextView label(String text) {
+        TextView view = new TextView(this);
+        view.setText(text);
+        view.setPadding(0, (int) (getResources().getDisplayMetrics().density * 10), 0, 0);
+        return view;
     }
 
     private void editLocation() {
@@ -189,10 +464,15 @@ public class SettingsActivity extends Activity {
     private void chooseModel() {
         String[] models = {"deepseek-flash", "deepseek-v4-pro"};
         int current = "deepseek-v4-pro".equals(settings.model()) ? 1 : 0;
-        new AlertDialog.Builder(this)
-            .setTitle("模型")
+        Dialogs.builder(this)
+            .setTitle("模型（当前档案）")
             .setSingleChoiceItems(models, current, (dialog, which) -> {
-                settings.raw().edit().putString(Settings.KEY_MODEL, models[which]).apply();
+                List<Profiles.Profile> list = Profiles.all(settings);
+                Profiles.Profile active = Profiles.active(settings);
+                for (Profiles.Profile profile : list) {
+                    if (profile.id.equals(active.id)) profile.model = models[which];
+                }
+                Profiles.save(settings, list, active.id);
                 dialog.dismiss();
                 refresh();
             })
@@ -202,7 +482,7 @@ public class SettingsActivity extends Activity {
     private void chooseLanguage() {
         String[] options = {"中文", "English"};
         int current = "English".equals(settings.reminderLanguage()) ? 1 : 0;
-        new AlertDialog.Builder(this)
+        Dialogs.builder(this)
             .setTitle("快照语言")
             .setSingleChoiceItems(options, current, (dialog, which) -> {
                 settings.raw().edit().putString(Settings.KEY_LANGUAGE, options[which]).apply();
@@ -218,7 +498,7 @@ public class SettingsActivity extends Activity {
         for (int index = 0; index < values.length; index++) {
             options[index] = formatTokens(values[index]);
         }
-        new AlertDialog.Builder(this)
+        Dialogs.builder(this)
             .setTitle("上下文上限")
             .setItems(options, (dialog, which) -> {
                 settings.setContextLimit(values[which]);
@@ -227,9 +507,34 @@ public class SettingsActivity extends Activity {
             .show();
     }
 
+    private void toggleAdaptiveContext() {
+        String[] options = {"关闭（默认）", "开启（实验性）"};
+        Dialogs.builder(this)
+            .setTitle("自适应上下文")
+            .setSingleChoiceItems(options, settings.adaptiveContext() ? 1 : 0, (dialog, which) -> {
+                settings.setAdaptiveContext(which == 1);
+                dialog.dismiss();
+                refresh();
+            })
+            .setNegativeButton("取消", null)
+            .show();
+    }
+
+    /** 实验模式下这三项由按需上下文接管，点击给明确提示而不是静默无反应。 */
+    private boolean compactLocked() {
+        if (settings.adaptiveContext()) {
+            Toast.makeText(this, "实验性「按需上下文」已接管，请先关闭它", Toast.LENGTH_SHORT).show();
+            return true;
+        }
+        return false;
+    }
+
     private void toggleAutoCompact() {
+        if (compactLocked()) {
+            return;
+        }
         String[] options = {"关闭", "开启（推荐）"};
-        new AlertDialog.Builder(this)
+        Dialogs.builder(this)
             .setTitle("自动压缩上下文")
             .setSingleChoiceItems(options, settings.autoCompact() ? 1 : 0, (dialog, which) -> {
                 settings.setAutoCompact(which == 1);
@@ -249,7 +554,7 @@ public class SettingsActivity extends Activity {
                 current = index;
             }
         }
-        new AlertDialog.Builder(this)
+        Dialogs.builder(this)
             .setTitle("压缩风格")
             .setSingleChoiceItems(options, current, (dialog, which) -> {
                 settings.setCompactStyle(values[which]);
@@ -261,7 +566,7 @@ public class SettingsActivity extends Activity {
 
     private void toggleCompactVerify() {
         String[] options = {"关闭（省 token）", "开启（更准）"};
-        new AlertDialog.Builder(this)
+        Dialogs.builder(this)
             .setTitle("压缩校验")
             .setSingleChoiceItems(options, settings.compactVerify() ? 1 : 0, (dialog, which) -> {
                 settings.setCompactVerify(which == 1);
@@ -328,7 +633,7 @@ public class SettingsActivity extends Activity {
         box.addView(bar);
         box.addView(hint);
 
-        new AlertDialog.Builder(this)
+        Dialogs.builder(this)
             .setTitle("温度")
             .setView(box)
             .setNegativeButton("取消", null)
@@ -352,7 +657,7 @@ public class SettingsActivity extends Activity {
     private void toggleHistoryThinking() {
         String[] options = {"不发送（推荐，省 token）", "发送（模型能看到自己以前的思考）"};
         int current = settings.sendHistoryThinking() ? 1 : 0;
-        new AlertDialog.Builder(this)
+        Dialogs.builder(this)
             .setTitle("历史思考过程发给模型")
             .setSingleChoiceItems(options, current, (dialog, which) -> {
                 settings.setSendHistoryThinking(which == 1);
@@ -364,7 +669,7 @@ public class SettingsActivity extends Activity {
 
     private void chooseTheme() {
         String[] options = {"深色", "浅色"};
-        new AlertDialog.Builder(this)
+        Dialogs.builder(this)
             .setTitle("外观")
             .setSingleChoiceItems(options, settings.theme(), (dialog, which) -> {
                 settings.raw().edit().putInt(Settings.KEY_THEME, which).apply();
@@ -376,7 +681,7 @@ public class SettingsActivity extends Activity {
 
     private void chooseFont() {
         String[] levels = {"小", "标准", "大"};
-        new AlertDialog.Builder(this)
+        Dialogs.builder(this)
             .setTitle("字体大小")
             .setSingleChoiceItems(levels, settings.font(), (dialog, which) -> {
                 settings.raw().edit().putInt(Settings.KEY_FONT, which).apply();
@@ -450,11 +755,12 @@ public class SettingsActivity extends Activity {
                     startRawImport(uri);
                     return;
                 }
-                new AlertDialog.Builder(this)
+                Dialogs.builder(this)
                     .setMessage("识别为官方导出的历史数据包（v3）。\n\n"
                         + "导入会用文件里的会话替换本机全部会话与附件；替换在一个事务里完成，"
                         + "失败不会改动现有数据。继续？")
                     .setNegativeButton("取消", (dialog, which) -> setBusy(false))
+                    .setOnCancelListener(dialog -> setBusy(false))
                     .setPositiveButton("替换导入", (dialog, which) -> startArchiveImport(uri))
                     .show();
             });
@@ -543,7 +849,7 @@ public class SettingsActivity extends Activity {
     }
 
     private void confirmClear() {
-        new AlertDialog.Builder(this)
+        Dialogs.builder(this)
             .setMessage("清空全部会话？此操作不可恢复。")
             .setNegativeButton("取消", null)
             .setPositiveButton("清空", (dialog, which) -> {
@@ -555,3 +861,6 @@ public class SettingsActivity extends Activity {
             .show();
     }
 }
+
+
+

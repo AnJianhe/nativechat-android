@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <attr name="ncBg" format="color" />
+    <attr name="ncSurface" format="color" />
+    <attr name="ncComposer" format="color" />
+    <attr name="ncCard" format="color" />
+    <attr name="ncText" format="color" />
+    <attr name="ncStroke" format="color" />
+    <attr name="ncAccent" format="color" />
+    <attr name="ncBubbleUser" format="color" />
+    <attr name="ncActivePill" format="color" />
+    <style name="NativeDialogDark" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialog_dark</item>
+        <item name="android:colorAccent">#679EFE</item>
+    </style>
+    <style name="NativeDialogLight" parent="android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialog_light</item>
+        <item name="android:colorAccent">#315CE5</item>
+    </style>
+    <style name="NativeChatDark" parent="android:style/Theme.Material.NoActionBar">
+        <item name="ncBg">#151517</item><item name="ncSurface">#2C2C2E</item>
+        <item name="ncComposer">#2C2C2E</item><item name="ncCard">#2C2C2E</item>
+        <item name="ncText">#F9FAFB</item><item name="ncStroke">#1FFFFFFF</item>
+        <item name="ncAccent">#5686FE</item><item name="ncBubbleUser">#2C2C2E</item>
+        <item name="ncActivePill">#1F3A6B</item>
+    </style>
+    <style name="NativeChatLight" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="ncBg">#F1F4FB</item><item name="ncSurface">#FFFFFF</item>
+        <item name="ncComposer">#FFFFFF</item><item name="ncCard">#FFFFFF</item>
+        <item name="ncText">#23262F</item><item name="ncStroke">#11000000</item>
+        <item name="ncAccent">#4C6EF5</item><item name="ncBubbleUser">#E9EEFB</item>
+        <item name="ncActivePill">#4C6EF5</item>
+    </style>
+</resources>

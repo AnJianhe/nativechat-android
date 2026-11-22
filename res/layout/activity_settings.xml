@@ -2,44 +2,59 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:fitsSystemWindows="true" android:background="@color/surface">
  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="16dp">
   <TextView android:id="@+id/back" android:layout_width="match_parent" android:layout_height="48dp" android:text="‹  设置" android:textColor="@color/text" android:textSize="20sp" />
-  <LinearLayout android:id="@+id/card_account" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp">
-   <TextView android:id="@+id/row_api_key" android:layout_width="match_parent" android:layout_height="48dp" android:text="设置 API Key" android:textColor="@color/text" android:textSize="16sp" />
-   <TextView android:id="@+id/api_key_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_dim" />
-   <TextView android:id="@+id/row_origin" android:layout_width="match_parent" android:layout_height="48dp" android:text="接口地址" android:textColor="@color/text" android:textSize="16sp" />
-   <TextView android:id="@+id/origin_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_dim" />
-   <TextView android:id="@+id/row_verify" android:layout_width="match_parent" android:layout_height="48dp" android:text="验证 API Key" android:textColor="@color/text" android:textSize="16sp" />
-   <TextView android:id="@+id/row_model" android:layout_width="match_parent" android:layout_height="48dp" android:text="模型" android:textColor="@color/text" android:textSize="16sp" />
-   <TextView android:id="@+id/model_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_dim" />
+  <LinearLayout android:id="@+id/card_account" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginBottom="12dp" android:padding="16dp">
+   <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="16dp" android:text="账户与模型" android:textColor="@color/text" android:textSize="18sp" android:textStyle="bold" />
+   <TextView android:id="@+id/row_profiles" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="模型档案（多 Key 切换）" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/profiles_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:layout_marginBottom="18dp" android:textColor="@color/text_dim" />
+   <TextView android:id="@+id/row_api_key" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="设置 API Key" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/api_key_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:layout_marginBottom="18dp" android:textColor="@color/text_dim" />
+   <TextView android:id="@+id/row_origin" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="接口地址" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/origin_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:layout_marginBottom="18dp" android:textColor="@color/text_dim" />
+   <TextView android:id="@+id/row_verify" android:layout_width="match_parent" android:layout_height="48dp" android:gravity="center_vertical" android:text="验证 API Key" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/row_model" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="模型" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/model_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:layout_marginBottom="18dp" android:textColor="@color/text_dim" />
   </LinearLayout>
-  <LinearLayout android:id="@+id/card_app" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp">
-   <TextView android:id="@+id/row_font" android:layout_width="match_parent" android:layout_height="48dp" android:text="字体大小" android:textColor="@color/text" android:textSize="16sp" />
-   <TextView android:id="@+id/font_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_dim" />
-   <TextView android:id="@+id/row_theme" android:layout_width="match_parent" android:layout_height="48dp" android:text="外观" android:textColor="@color/text" android:textSize="16sp" />
-   <TextView android:id="@+id/theme_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_dim" />
-   <TextView android:id="@+id/row_location" android:layout_width="match_parent" android:layout_height="48dp" android:text="位置快照" android:textColor="@color/text" android:textSize="16sp" />
-   <TextView android:id="@+id/location_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_dim" />
-   <TextView android:id="@+id/row_language" android:layout_width="match_parent" android:layout_height="48dp" android:text="快照语言" android:textColor="@color/text" android:textSize="16sp" />
-   <TextView android:id="@+id/language_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_dim" />
-   <TextView android:id="@+id/row_auto_compact" android:layout_width="match_parent" android:layout_height="48dp" android:text="自动压缩上下文" android:textColor="@color/text" android:textSize="16sp" />
-   <TextView android:id="@+id/auto_compact_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_dim" />
-   <TextView android:id="@+id/row_compact_style" android:layout_width="match_parent" android:layout_height="48dp" android:text="压缩风格" android:textColor="@color/text" android:textSize="16sp" />
-   <TextView android:id="@+id/compact_style_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_dim" />
-   <TextView android:id="@+id/row_compact_verify" android:layout_width="match_parent" android:layout_height="48dp" android:text="压缩校验（更准，费 token）" android:textColor="@color/text" android:textSize="16sp" />
-   <TextView android:id="@+id/compact_verify_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_dim" />
-   <TextView android:id="@+id/row_context_limit" android:layout_width="match_parent" android:layout_height="48dp" android:text="上下文上限" android:textColor="@color/text" android:textSize="16sp" />
-   <TextView android:id="@+id/context_limit_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_dim" />
-   <TextView android:id="@+id/row_temperature" android:layout_width="match_parent" android:layout_height="48dp" android:text="温度" android:textColor="@color/text" android:textSize="16sp" />
-   <TextView android:id="@+id/temperature_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_dim" />
-   <TextView android:id="@+id/row_history_thinking" android:layout_width="match_parent" android:layout_height="48dp" android:text="历史思考过程发给模型" android:textColor="@color/text" android:textSize="16sp" />
-   <TextView android:id="@+id/history_thinking_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_dim" />
+  <LinearLayout android:id="@+id/card_app" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginBottom="12dp" android:padding="16dp">
+   <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="16dp" android:text="应用与快照" android:textColor="@color/text" android:textSize="18sp" android:textStyle="bold" />
+   <TextView android:id="@+id/row_font" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="字体大小" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/font_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:layout_marginBottom="18dp" android:textColor="@color/text_dim" />
+   <TextView android:id="@+id/row_theme" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="外观" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/theme_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:layout_marginBottom="18dp" android:textColor="@color/text_dim" />
+   <TextView android:id="@+id/row_location" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="位置快照" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/location_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:layout_marginBottom="18dp" android:textColor="@color/text_dim" />
+   <TextView android:id="@+id/row_language" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="快照语言" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/language_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:layout_marginBottom="18dp" android:textColor="@color/text_dim" />
   </LinearLayout>
-  <LinearLayout android:id="@+id/card_data" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp">
-   <TextView android:id="@+id/row_export" android:layout_width="match_parent" android:layout_height="48dp" android:text="导出历史 ZIP" android:textColor="@color/text" android:textSize="16sp" />
-   <TextView android:id="@+id/row_import" android:layout_width="match_parent" android:layout_height="48dp" android:text="导入数据（自动识别）" android:textColor="@color/text" android:textSize="16sp" />
-   <TextView android:id="@+id/row_clear" android:layout_width="match_parent" android:layout_height="48dp" android:text="清空会话" android:textColor="@color/text" android:textSize="16sp" />
-   <TextView android:id="@+id/row_diag" android:layout_width="match_parent" android:layout_height="48dp" android:text="导出诊断日志" android:textColor="@color/text" android:textSize="16sp" />
-   <TextView android:id="@+id/diag_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/text_dim" />
+  <LinearLayout android:id="@+id/card_context" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginBottom="12dp" android:padding="16dp">
+   <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="16dp" android:text="上下文与生成" android:textColor="@color/text" android:textSize="18sp" android:textStyle="bold" />
+   <TextView android:id="@+id/row_auto_compact" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="自动压缩上下文" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/auto_compact_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:layout_marginBottom="18dp" android:textColor="@color/text_dim" />
+   <TextView android:id="@+id/row_compact_style" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="压缩风格" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/compact_style_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:layout_marginBottom="18dp" android:textColor="@color/text_dim" />
+   <TextView android:id="@+id/row_compact_verify" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="压缩校验（更准，费 token）" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/compact_verify_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:layout_marginBottom="18dp" android:textColor="@color/text_dim" />
+   <TextView android:id="@+id/row_context_limit" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="上下文上限" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/context_limit_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:layout_marginBottom="18dp" android:textColor="@color/text_dim" />
+   <TextView android:id="@+id/row_temperature" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="温度" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/temperature_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:layout_marginBottom="18dp" android:textColor="@color/text_dim" />
+   <TextView android:id="@+id/row_history_thinking" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="历史思考过程发给模型" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/history_thinking_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:layout_marginBottom="18dp" android:textColor="@color/text_dim" />
   </LinearLayout>
-  <LinearLayout android:id="@+id/card_about" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp"><TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="原生聊天" android:textColor="@color/text" /></LinearLayout>
+  <LinearLayout android:id="@+id/card_experimental" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginBottom="12dp" android:padding="16dp">
+   <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="16dp" android:text="实验性功能" android:textColor="@color/text" android:textSize="18sp" android:textStyle="bold" />
+   <TextView android:id="@+id/row_adaptive_context" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="自适应上下文" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/adaptive_context_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:textColor="@color/text_dim" />
+  </LinearLayout>
+  <LinearLayout android:id="@+id/card_data" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginBottom="12dp" android:padding="16dp">
+   <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="16dp" android:text="数据" android:textColor="@color/text" android:textSize="18sp" android:textStyle="bold" />
+   <TextView android:id="@+id/row_export" android:layout_width="match_parent" android:layout_height="48dp" android:gravity="center_vertical" android:text="导出历史 ZIP" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/row_import" android:layout_width="match_parent" android:layout_height="48dp" android:gravity="center_vertical" android:text="导入数据（自动识别）" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/row_clear" android:layout_width="match_parent" android:layout_height="48dp" android:gravity="center_vertical" android:text="清空会话" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/row_diag" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="导出诊断日志" android:textColor="@color/text" android:textSize="16sp" />
+   <TextView android:id="@+id/diag_value" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="3dp" android:layout_marginBottom="18dp" android:textColor="@color/text_dim" />
+  </LinearLayout>
+  <LinearLayout android:id="@+id/card_about" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginBottom="12dp" android:padding="16dp">   <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginBottom="16dp" android:text="关于" android:textColor="@color/text" android:textSize="18sp" android:textStyle="bold" />
+<TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="原生聊天" android:textColor="@color/text" android:textSize="16sp" /><TextView android:id="@+id/row_changelog" android:layout_width="match_parent" android:layout_height="48dp" android:gravity="center_vertical" android:text="更新日志" android:textColor="@color/text" android:textSize="16sp" /></LinearLayout>
  </LinearLayout>
 </ScrollView>
+

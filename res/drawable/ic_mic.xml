@@ -3,7 +3,7 @@
     android:width="24dp" android:height="24dp"
     android:viewportWidth="24" android:viewportHeight="24">
     <path android:pathData="M12,4 C10.3,4 9,5.3 9,7 L9,12 C9,13.7 10.3,15 12,15 C13.7,15 15,13.7 15,12 L15,7 C15,5.3 13.7,4 12,4 Z"
-        android:strokeColor="#EDEDEF" android:strokeWidth="1.6" />
+        android:strokeColor="?attr/ncText" android:strokeWidth="1.6" />
     <path android:pathData="M6,11 C6,14.9 8.7,17.5 12,17.5 C15.3,17.5 18,14.9 18,11 M12,17.5 L12,20"
-        android:strokeColor="#EDEDEF" android:strokeWidth="1.6" android:strokeLineCap="round" />
+        android:strokeColor="?attr/ncText" android:strokeWidth="1.6" android:strokeLineCap="round" />
 </vector>

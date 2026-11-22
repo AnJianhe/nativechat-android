@@ -41,6 +41,9 @@ public final class Engine {
 
         /** 附件 serverId 有更新，界面需要刷新 */
         void onFilesChanged();
+
+        /** 本地选取历史的范围或不足，不代表模型调用了工具。 */
+        void onHistoryNotice(String notice);
     }
 
     private final Context context;
@@ -52,6 +55,7 @@ public final class Engine {
 
     private static final Object PROCESS_LOCK = new Object();
     private static volatile boolean processStreaming;
+    private static long lastFullHistoryAt;
     private volatile Api.Call call;
     private volatile boolean streaming;
     private volatile String activeSession;
@@ -237,6 +241,8 @@ public final class Engine {
         reply.thinking = previous.thinking;
         reply.search = previous.search;
         reply.status = Msg.PENDING;
+        // 续写是新请求；未收到新用量之前不能显示上次的数据。
+        reply.usage = null;
         reply.stopReason = null;
         reply.stopDetails = null;
         reply.error = null;
@@ -363,11 +369,16 @@ public final class Engine {
             Map<Integer, Integer> blockIndexes = new java.util.HashMap<>();
             JSONArray prepared = null;
             boolean preparing = true;
+            Request request = null;
             try {
+                final boolean adaptive = settings.adaptiveContext();
+                HistorySelection selection = adaptive
+                    ? selectHistory(history, question.content, System.currentTimeMillis()) : null;
+                if (selection != null) notifyListener(target -> target.onHistoryNotice(selection.notice));
                 for (int attempt = 0; ; attempt++) {
                     preparing = true;
                     try {
-                        Request request = prepare(sessionId, history, question, origin, apiKey,
+                        request = prepare(sessionId, java.util.Collections.emptyList(), question, origin, apiKey,
                             sessionCall);
                         if (sessionCall.isCancelled()) {
                             Prompt.settleReply(current, Msg.STOPPED, System.currentTimeMillis(),
@@ -383,13 +394,21 @@ public final class Engine {
                         current.status = Msg.PENDING;
                         db.saveMessage(current);
 
-                        JSONArray messages = Prompt.toRequestMessages(request.history,
-                            withTime(request.question, current.latestReminder), prefix,
-                            current.thinking, reminder,
-                            settings.sendHistoryThinking(),
-                            compactIfNeeded(sessionId, request.history, origin, apiKey, model,
-                                sessionCall),
-                            Math.max(4000, settings.contextLimit() - 4000));
+                        Msg contextualQuestion = withTime(request.question, current.latestReminder);
+                        if (adaptive) contextualQuestion.content += "\n\n【历史检索范围说明】" + selection.notice
+                            + "；若资料不足，请明确告知，不要猜测。";
+                        // Adaptive mode is limited to local history selection. Normal mode keeps
+                        // the previous context builder, including the user's compaction setting.
+                        JSONArray messages = adaptive
+                            ? Prompt.toRequestMessages(selection.messages, contextualQuestion, prefix,
+                                current.thinking, reminder, false, null, 0)
+                            : Prompt.toRequestMessages(history, contextualQuestion, prefix,
+                                current.thinking, reminder, settings.sendHistoryThinking(),
+                                compactIfNeeded(sessionId, history, origin, apiKey, model, sessionCall),
+                                Math.max(4000, settings.contextLimit() - 4000));
+                        if (Prompt.estimateTokens(messages) > Math.max(1, settings.contextLimit() - 4000)) {
+                            throw new IllegalStateException("请求及所选历史超过上下文预算，未发送；请缩小历史日期范围或缩短问题。历史记录未删除。");
+                        }
                         Diag.log("PREP", "请求 " + messages.length() + " 条 · 估算 "
                             + Prompt.estimateTokens(messages) + " tokens");
                         prepared = messages;
@@ -440,7 +459,11 @@ public final class Engine {
                             break;
                         }
                         if (attempt < Prompt.FILE_RETRY_LIMIT && !receivedContent[0]
-                            && reuploadInvalidated(sessionId, prepared, error)) {
+                            && reuploadInvalidated(request, error)) {
+                            if (request != null) {
+                                LongImageUploader.cleanupAsync(origin, apiKey, request.temporaryIds);
+                                request = null;
+                            }
                             waitForRetry(attempt, sessionCall);
                             if (sessionCall.isCancelled()) {
                                 Prompt.settleReply(current, Msg.STOPPED,
@@ -462,6 +485,7 @@ public final class Engine {
             } catch (Throwable error) {
                 Prompt.settleReply(current, Msg.ERROR, System.currentTimeMillis(), protocol(error));
             } finally {
+                if (request != null) LongImageUploader.cleanupAsync(origin, apiKey, request.temporaryIds);
                 try {
                     db.saveMessage(current);
                     db.touchSession(sessionId);
@@ -532,9 +556,77 @@ public final class Engine {
         notifyListener(target -> target.onReply(snapshot));
     }
 
+    /** Current-branch only. Limits are UTF-16 characters, not exact model tokens. */
+    private static final class HistorySelection {
+        final List<Msg> messages;
+        final String notice;
+        HistorySelection(List<Msg> messages, String notice) { this.messages = messages; this.notice = notice; }
+    }
+
+    private HistorySelection selectHistory(List<Msg> branch, String text, long now) {
+        String query = text == null ? "" : text;
+        boolean historyIntent = query.matches("(?s).*(历史|记录|聊天|对话|聊过|聊了|谈过|谈了|说过|说了|问过|问了|之前|以前|当时|回顾).*" );
+        boolean full = historyIntent && query.matches("(?s).*(全部|所有|完整|全量|整个|全都).*" );
+        HistoryContext.DateRange range = null;
+        String scope = "最近24小时";
+        String warning = "";
+        if (historyIntent && !full) {
+            try { range = HistoryContext.parseDateRange(query); }
+            catch (IllegalArgumentException ex) {
+                throw new IllegalArgumentException("历史日期无效；未查询也未发送，请改正日期后重试。历史记录未删除。");
+            }
+            if (range == null && query.matches("(?s).*(昨天|前天|上周|上个月|去年|今日|今天|本周|这个月|那天|当时|\\d{1,4}[-/年]\\d{1,2}).*")) {
+                throw new IllegalArgumentException("无法确定历史日期；未查询也未发送，请提供具体日期范围，例如2026年11月12日到13日。");
+            }
+        }
+        if (full) {
+            synchronized (PROCESS_LOCK) {
+                if (lastFullHistoryAt != 0 && now - lastFullHistoryAt < 60_000 && now >= lastFullHistoryAt) {
+                    throw new IllegalStateException("全量历史请求限流：60秒内只能请求一次；本次未查询也未发送，记录未删除。");
+                }
+                lastFullHistoryAt = now;
+            }
+        }
+        if (range != null) scope = range.start + " 至 " + range.end + "（" + range.zone + "）";
+        if (full) scope = "当前分支全部历史";
+        int maxChars = Math.max(1000, Math.min(HistoryContext.MAX_PAGE_CHARS,
+            Math.max(1, settings.contextLimit() - 4000) / 2));
+        HistoryContext.Page page;
+        if (full) {
+            java.time.ZoneId zone = java.time.ZoneId.systemDefault();
+            HistoryContext.DateRange all = new HistoryContext.DateRange(java.time.LocalDate.of(1970, 1, 1),
+                java.time.LocalDate.of(9999, 12, 30), zone);
+            page = HistoryContext.range(branch, all, 0, HistoryContext.MAX_PAGE_TURNS, maxChars);
+        } else if (range != null) {
+            page = HistoryContext.range(branch, range, 0, HistoryContext.MAX_PAGE_TURNS, maxChars);
+        } else {
+            page = HistoryContext.recent(branch, now, 0, HistoryContext.MAX_PAGE_TURNS, maxChars);
+        }
+        if (historyIntent && !full && range == null && query.matches("(?s).*(昨天|前天|上周|上个月|去年).*")) {
+            warning = "未识别相对日期，未按该日期检索；";
+        }
+        String detail = warning + scope + "：提供 " + page.turns.size() + " 轮";
+        if (page.truncated) detail += "；因容量限制未完整提供（超大轮次跳过 " + page.skippedOversizeTurns
+            + " 轮" + (page.nextCursor != -1 ? "，还有其他轮次未提供" : "") + "）";
+        detail += "。仅含有正文的完整问答，附件、思考、工具内容及不完整轮次不包含；历史记录未删除。";
+        List<Msg> selected = new ArrayList<>();
+        java.time.format.DateTimeFormatter fmt = java.time.format.DateTimeFormatter
+            .ofPattern("yyyy-MM-dd HH:mm:ss z").withZone(java.time.ZoneId.systemDefault());
+        for (HistoryContext.Turn turn : page.turns) {
+            // Keep real role boundaries and avoid mutating the stored message.
+            Msg user = branch.get(turn.userIndex).copy();
+            user.content = "[本条提问时间 " + fmt.format(java.time.Instant.ofEpochMilli(turn.createdAt))
+                + "]\n" + (user.content == null ? "" : user.content);
+            selected.add(user);
+            selected.add(branch.get(turn.userIndex + 1));
+        }
+        return new HistorySelection(selected, detail);
+    }
     // ================================================================ 附件补齐
 
     private static final class Request {
+        final Map<String, Msg.FileAtt> owners = new java.util.HashMap<>();
+        final List<String> temporaryIds = new ArrayList<>();
         List<Msg> history;
         Msg question;
     }
@@ -552,32 +644,47 @@ public final class Engine {
         request.question = refresh(question);
         request.history = refreshAll(history);
 
-        for (Msg.FileAtt file : request.question.files) {
-            if (call.isCancelled()) {
-                break;
-            }
+        List<Msg.FileAtt> originals = new ArrayList<>(request.question.files);
+        List<Msg.FileAtt> requestFiles = new ArrayList<>();
+        int totalParts = 0;
+        for (Msg.FileAtt file : originals) {
+            totalParts += LongImageUploader.count(attachments, file);
+            if (totalParts > Attachments.MAX_COUNT)
+                throw new Api.ApiError(Api.UPLOAD, "切分后的附件总数超过上限（最多 " + Attachments.MAX_COUNT + " 个），未上传", -1);
+        }
+        try {
+        for (Msg.FileAtt file : originals) {
+            if (call.isCancelled()) throw new Api.ApiError(Api.INTERRUPTED, "Cancelled", -1);
             long started = Diag.now();
-            if (ensureServerId(sessionId, file, origin, apiKey, call) == null
-                && file.serverId == null && !attachments.exists(file)) {
-                // 没有本地原件也没有 serverId：只展示，不进入请求
-                continue;
+            List<String> ids;
+            if (LongImageUploader.isLongImage(attachments, file)) {
+                ids = LongImageUploader.upload(attachments, context.getCacheDir(), origin, apiKey, file, call);
+                if (ids != null) request.temporaryIds.addAll(ids);
+            } else {
+                String id = ensureServerId(sessionId, file, origin, apiKey, call);
+                ids = id == null ? null : java.util.Collections.singletonList(id);
+            }
+            if (ids == null || ids.isEmpty())
+                throw new Api.ApiError(Api.UPLOAD, "附件无法上传：" + file.name + "（原文件不可用或上传未返回 ID）", -1);
+            for (String id : ids) {
+                if (id == null || id.trim().isEmpty())
+                    throw new Api.ApiError(Api.UPLOAD, "附件上传未返回有效 ID：" + file.name, -1);
+                Msg.FileAtt part = new Msg.FileAtt();
+                part.isImage = file.isImage;
+                part.serverId = id;
+                requestFiles.add(part);
+                request.owners.put(id, file);
+                if (requestFiles.size() > Attachments.MAX_COUNT)
+                    throw new Api.ApiError(Api.UPLOAD, "切分后的附件总数超过上限（最多 " + Attachments.MAX_COUNT + " 个）", -1);
             }
             Diag.log("PREP", "本轮附件 " + file.name + " · " + Diag.millis(started) + "ms");
         }
-
-        request.question = refreshFiles(refresh(question));
-        request.history = refreshAll(history);
-        boolean hasFile = false;
-        for (Msg.FileAtt file : request.question.files) {
-            if (file.serverId != null && !file.serverId.isEmpty()) {
-                hasFile = true;
-                break;
-            }
+        } catch (Api.ApiError | RuntimeException error) {
+            LongImageUploader.cleanupAsync(origin, apiKey, request.temporaryIds);
+            throw error;
         }
-        if ((request.question.content == null || request.question.content.isEmpty()) && !hasFile) {
-            throw new Api.ApiError(Api.UPLOAD,
-                "这次只有附件，但附件没有成功上传，先重试一次", -1);
-        }
+        request.question.files.clear();
+        request.question.files.addAll(requestFiles);
         Diag.log("PREP", "准备完成 · 历史 " + request.history.size() + " 条 · 附件 "
             + request.question.files.size() + " · " + Diag.millis(since) + "ms");
         return request;
@@ -771,8 +878,9 @@ public final class Engine {
             file.serverId = stored.serverId;
             return stored.serverId;
         }
+        file.serverId = null;
         String serverId = attachments.upload(origin, apiKey, stored, call);
-        if (serverId == null) {
+        if (serverId == null || serverId.trim().isEmpty()) {
             return null;
         }
         file.serverId = serverId;
@@ -803,41 +911,21 @@ public final class Engine {
      * 服务端判定 file_id 失效时，清掉对应附件的 serverId，下一次补齐会重新读取本地原件上传。
      * 报错里点名了 file_id 就只重置这些，没点名则重置本次请求用到的全部附件。
      */
-    private boolean reuploadInvalidated(String sessionId, JSONArray prepared, Api.ApiError error) {
-        if (!Api.isFileInvalidated(error)) {
-            return false;
-        }
-        List<Msg> all = db.messages(sessionId);
+    private boolean reuploadInvalidated(Request request, Api.ApiError error) {
+        if (request == null || !Api.isFileInvalidated(error)) return false;
         Set<String> targets = new HashSet<>(Api.extractFileIds(error.getMessage()));
-        if (targets.isEmpty()) {
-            for (Msg message : all) {
-                if (message.isUser()) {
-                    addServerIds(targets, message.files);
-                }
-            }
-        }
-        if (targets.isEmpty()) {
-            return false;
-        }
+        if (targets.isEmpty()) targets.addAll(request.owners.keySet());
         boolean changed = false;
-        for (Msg message : all) {
-            if (!message.isUser()) {
-                continue;
-            }
-            for (Msg.FileAtt file : message.files) {
-                if (file.serverId != null && targets.contains(file.serverId)) {
-                    file.serverId = null;
-                    db.setFileServerId(file.id, null);
-                    changed = true;
-                }
-            }
-        }
-        if (changed) {
-            db.saveMessages(all);
+        for (String id : targets) {
+            Msg.FileAtt file = request.owners.get(id);
+            if (file == null) continue;
+            // Slices were never persisted; clear the original cached ID too, if any.
+            file.serverId = null;
+            db.setFileServerId(file.id, null);
+            changed = true;
         }
         return changed;
     }
-
     /** 重传前的退避等待：第 n 次等待 2^n 秒，停止生成时立即返回。 */
     private void waitForRetry(int attempt, Api.Call call) {
         long delay = Prompt.FILE_RETRY_BASE_DELAY * (1L << Math.min(attempt, 8));
@@ -914,6 +1002,7 @@ public final class Engine {
         return json;
     }
 }
+
 
 
 

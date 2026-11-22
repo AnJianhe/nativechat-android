@@ -37,12 +37,16 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle state) {
+        setTheme(Palette.of(this).dark ? R.style.NativeChatDark : R.style.NativeChatLight);
         super.onCreate(state);
         setContentView(R.layout.activity_main);
         Diag.start(this);
         db = new Db(this);
 
+        Palette theme = Palette.of(this);
+        findViewById(android.R.id.content).setBackgroundColor(theme.bg);
         ListView list = findViewById(R.id.list);
+        list.setBackgroundColor(theme.bg);
         adapter = new SessionAdapter();
         list.setAdapter(adapter);
         list.setOnItemClickListener((parent, view, position, id) -> open(data.get(position).id));
@@ -78,7 +82,7 @@ public class MainActivity extends Activity {
     }
 
     private void confirmDelete(Db.Session session) {
-        new AlertDialog.Builder(this)
+        Dialogs.builder(this)
             .setMessage("删除「" + session.title + "」？")
             .setNegativeButton("取消", null)
             .setPositiveButton("删除", (dialog, which) -> {
@@ -111,7 +115,12 @@ public class MainActivity extends Activity {
             View view = convertView != null ? convertView
                 : getLayoutInflater().inflate(R.layout.item_session, parent, false);
             Db.Session session = data.get(position);
-            ((TextView) view.findViewById(R.id.title)).setText(session.title);
+            Palette palette = Palette.of(MainActivity.this);
+            TextView titleView = view.findViewById(R.id.title);
+            titleView.setTextColor(palette.text);
+            ((TextView) view.findViewById(R.id.subtitle)).setTextColor(palette.textDim);
+            view.setBackgroundColor(palette.bg);
+            titleView.setText(session.title);
             String preview = db.lastMessagePreview(session.id);
             if (preview.length() > 40) {
                 preview = preview.substring(0, 40) + "…";

@@ -126,6 +126,7 @@ public class ChatActivity extends Activity implements Engine.Listener {
             pendingCapture = android.net.Uri.parse(state.getString("camera_uri"));
         }
         palette = Palette.of(this);
+        setTheme(palette.dark ? R.style.NativeChatDark : R.style.NativeChatLight);
         settings = new Settings(this);
         Diag.start(this);
         setContentView(R.layout.activity_chat);
@@ -195,6 +196,10 @@ public class ChatActivity extends Activity implements Engine.Listener {
         scrim.setOnClickListener(view -> hideDrawer());
         ((ImageView) findViewById(R.id.menu)).setOnClickListener(view -> showDrawer());
         titleView.setOnClickListener(view -> openSettings());
+        titleView.setOnLongClickListener(view -> {
+            showProfileSwitcher();
+            return true;
+        });
         findViewById(R.id.new_chat).setOnClickListener(view -> startNewChat());
         findViewById(R.id.attach).setOnClickListener(view -> chooseAttachment());
         findViewById(R.id.mic).setOnClickListener(view -> toggleVoice());
@@ -279,11 +284,27 @@ public class ChatActivity extends Activity implements Engine.Listener {
     /** 主题上色。 */
     private void applyTheme() {
         findViewById(android.R.id.content).setBackgroundColor(palette.bg);
+        // 布局根节点自带固定深色背景，不覆盖它的话浅色模式只会渲染出白输入框。
+        ViewGroup content = findViewById(android.R.id.content);
+        if (content.getChildCount() > 0) {
+            content.getChildAt(0).setBackgroundColor(palette.bg);
+        }
         list.setBackgroundColor(palette.bg);
+        // 欢迎页的副标题没有 id，按文本遍历上色。
+        View welcomeView = findViewById(R.id.welcome);
+        if (welcomeView instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) welcomeView;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View child = group.getChildAt(i);
+                if (child instanceof TextView && child.getId() != R.id.greeting) {
+                    ((TextView) child).setTextColor(palette.textDim);
+                }
+            }
+        }
         GradientDrawable composer = new GradientDrawable();
         composer.setColor(palette.composer);
         composer.setCornerRadius(dp(24));
-        composer.setStroke(Math.max(1, (int) dp(1)), palette.strokeThin);
+        composer.setStroke(Math.max(1, dp(1)), palette.dark ? 0xFF666A73 : 0xFF9CA5B3);
         ((View) input.getParent()).setBackground(composer);
         input.setTextColor(palette.text);
         input.setHintTextColor(palette.textDim);
@@ -293,6 +314,45 @@ public class ChatActivity extends Activity implements Engine.Listener {
         sendBackground.setColor(palette.accent);
         sendButton.setBackground(sendBackground);
         drawer.setBackgroundColor(palette.surface);
+        if (drawer instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) drawer;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View child = group.getChildAt(i);
+                if (child instanceof TextView && child.getId() == View.NO_ID) {
+                    ((TextView) child).setTextColor(palette.text);
+                }
+            }
+        }
+        ((TextView) findViewById(R.id.drawer_new)).setTextColor(palette.accent);
+        ((TextView) findViewById(R.id.drawer_settings)).setTextColor(palette.textDim);
+        drawerSearch.setTextColor(palette.text);
+        drawerSearch.setHintTextColor(palette.textDim);
+        ((TextView) findViewById(R.id.greeting)).setTextColor(palette.text);
+        attachmentsLabel.setTextColor(palette.accent);
+        for (int id : new int[]{R.id.menu, R.id.new_chat, R.id.mic, R.id.attach}) {
+            ImageView icon = findViewById(id);
+            icon.setColorFilter(palette.text);
+            icon.setAlpha(1f);
+        }
+        sendButton.setColorFilter(Color.WHITE);
+    }
+
+    /** 长按标题快速换档案：换了在下一轮请求生效。 */
+    private void showProfileSwitcher() {
+        final java.util.List<Profiles.Profile> list = Profiles.all(settings);
+        final Profiles.Profile active = Profiles.active(settings);
+        String[] items = new String[list.size()];
+        for (int i = 0; i < list.size(); i++) {
+            items[i] = (list.get(i).id.equals(active.id) ? "✓ " : "   ") + list.get(i).display();
+        }
+        Dialogs.builder(this)
+            .setTitle("切换模型档案")
+            .setItems(items, (dialog, which) -> {
+                Profiles.activate(settings, list.get(which).id);
+                Toast.makeText(this, "已切换到 " + list.get(which).display(),
+                    Toast.LENGTH_SHORT).show();
+            })
+            .show();
     }
 
     private void paintToggles() {
@@ -301,9 +361,17 @@ public class ChatActivity extends Activity implements Engine.Listener {
     }
 
     private void paintPill(TextView view, boolean active) {
-        view.setBackgroundResource(active ? R.drawable.pill_active
-            : palette.dark ? R.drawable.pill : R.drawable.pill_light);
-        view.setTextColor(active ? palette.accent : palette.textDim);
+        GradientDrawable background = new GradientDrawable();
+        background.setCornerRadius(dp(17));
+        int activeFill = palette.dark ? 0xFF2856D8 : 0xFF4C6EF5;
+        // 浅色下关闭态保持白底细边，接近参考界面的胶囊样式
+        int inactiveFill = palette.dark ? 0xFF30333B : 0xFFFFFFFF;
+        background.setColor(active ? activeFill : inactiveFill);
+        background.setStroke(Math.max(1, dp(1)), active ? activeFill
+            : palette.dark ? 0xFF838A99 : 0xFFD8DEEA);
+        view.setBackground(background);
+        view.setTextColor(active ? Color.WHITE : palette.text);
+        view.setContentDescription(view.getText() + (active ? "，已开启" : "，已关闭"));
     }
 
     @Override
@@ -376,6 +444,17 @@ public class ChatActivity extends Activity implements Engine.Listener {
     }
 
     @Override
+    public void onHistoryNotice(String notice) {
+        if (notice.contains("未完整提供") || notice.contains("未提供历史")
+                || notice.contains("未识别相对日期")) {
+            Dialogs.builder(this).setTitle("历史上下文提示")
+                .setMessage(notice).setPositiveButton("知道了", null).show();
+        } else {
+            Toast.makeText(this, notice, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
     public void onFilesChanged() {
         refreshAttachments();
     }
@@ -445,6 +524,10 @@ public class ChatActivity extends Activity implements Engine.Listener {
     @Override
     protected void onResume() {
         super.onResume();
+        if (palette != null && Palette.of(this).dark != palette.dark) {
+            recreate();
+            return;
+        }
         if (db != null && adapter != null && sessionId != null && !engine.isStreaming()) {
             if (db.session(sessionId) == null) {
                 sessionId = null;
@@ -829,7 +912,7 @@ public class ChatActivity extends Activity implements Engine.Listener {
         view.setAdjustViewBounds(true);
         view.setMinimumHeight(dp(120));
         view.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = Dialogs.builder(this)
             .setTitle(file.name)
             .setView(view)
             .setPositiveButton("关闭", null)
@@ -941,7 +1024,7 @@ public class ChatActivity extends Activity implements Engine.Listener {
     }
 
     private void sessionActions(Db.Session session) {
-        new AlertDialog.Builder(this)
+        Dialogs.builder(this)
             .setItems(new String[]{"重命名", "删除"}, (dialog, which) -> {
                 if (which == 0) {
                     EditText field = new EditText(this);
@@ -951,7 +1034,7 @@ public class ChatActivity extends Activity implements Engine.Listener {
                     LinearLayout box = new LinearLayout(this);
                     box.setPadding(pad, pad, pad, 0);
                     box.addView(field);
-                    new AlertDialog.Builder(this)
+                    Dialogs.builder(this)
                         .setTitle("重命名")
                         .setView(box)
                         .setNegativeButton("取消", null)
@@ -967,7 +1050,7 @@ public class ChatActivity extends Activity implements Engine.Listener {
                         })
                         .show();
                 } else {
-                    new AlertDialog.Builder(this)
+                    Dialogs.builder(this)
                         .setMessage("删除「" + session.title + "」？")
                         .setNegativeButton("取消", null)
                         .setPositiveButton("删除", (dialog2, button) -> {
@@ -987,7 +1070,7 @@ public class ChatActivity extends Activity implements Engine.Listener {
 
     private void showActions(Msg message) {
         if (message.isUser()) {
-            new AlertDialog.Builder(this)
+            Dialogs.builder(this)
                 .setItems(new String[]{"复制", "编辑并重发"}, (dialog, which) -> {
                     if (which == 0) {
                         copy(message.content);
@@ -1008,7 +1091,7 @@ public class ChatActivity extends Activity implements Engine.Listener {
         if (message.error != null && Api.UPLOAD.equals(message.error.optString("kind"))) {
             items.add("重试上传附件");
         }
-        new AlertDialog.Builder(this)
+        Dialogs.builder(this)
             .setItems(items.toArray(new String[0]), (dialog, which) -> {
                 String choice = items.get(which);
                 if ("复制".equals(choice)) {
@@ -1040,7 +1123,7 @@ public class ChatActivity extends Activity implements Engine.Listener {
         EditText field = new EditText(this);
         field.setText(message.content);
         field.setSelection(field.getText().length());
-        new AlertDialog.Builder(this).setTitle("编辑提问").setView(field)
+        Dialogs.builder(this).setTitle("编辑提问").setView(field)
             .setNegativeButton("取消", null)
             .setPositiveButton("发送", (dialog, which) -> {
                 if (engine.edit(sessionId, message.id, field.getText().toString())) {
@@ -1454,11 +1537,12 @@ public class ChatActivity extends Activity implements Engine.Listener {
                 + (settings.contextLimit() * 3 / 4 / 1000) + "K 时触发。\n"
                 : "自动压缩已关闭，接近上限时请求会报错。\n");
         }
-        new AlertDialog.Builder(this)
+        Dialogs.builder(this)
             .setTitle("上下文用量")
             .setMessage(text.toString())
             .setPositiveButton("好", null)
-            .setNeutralButton("设置", (dialog, which) ->
+            .setNeutralButton("用量与费用", (dialog, which) -> UsageDialog.show(this, messages))
+            .setNegativeButton("设置", (dialog, which) ->
                 startActivity(new Intent(this, SettingsActivity.class)))
             .show();
     }
@@ -1747,12 +1831,14 @@ public class ChatActivity extends Activity implements Engine.Listener {
             versions.setOnClickListener(view -> cycleVersion(message));
             footer.addView(versions);
         }
-        if (message.usage != null && Msg.DONE.equals(message.status)) {
+        if (message.usage != null) {
             TextView usage = new TextView(this);
             usage.setTextSize(10.5f);
             usage.setTextColor(palette.textDim);
             usage.setLetterSpacing(0.02f);
-            usage.setText(Prompt.usageText(message.usage));
+            usage.setText("用量与价格  ▾");
+            usage.setPadding(0, dp(6), dp(12), dp(6));
+            usage.setOnClickListener(view -> UsageDialog.showReply(this, message));
             footer.addView(usage);
         } else if (Msg.STOPPED.equals(message.status)) {
             TextView stopped = new TextView(this);

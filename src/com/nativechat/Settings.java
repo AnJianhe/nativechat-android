@@ -29,6 +29,15 @@ public final class Settings {
     public static final String KEY_COMPACT_STYLE = "compact_style";
     /** 压缩校验：让新摘要与旧上下文互相提问修订，更准但更费 token。 */
     public static final String KEY_COMPACT_VERIFY = "compact_verify";
+    public static final String KEY_ADAPTIVE_CONTEXT = "adaptive_context_experimental";
+
+    public boolean adaptiveContext() {
+        return prefs.getBoolean(KEY_ADAPTIVE_CONTEXT, false);
+    }
+
+    public void setAdaptiveContext(boolean enabled) {
+        prefs.edit().putBoolean(KEY_ADAPTIVE_CONTEXT, enabled).apply();
+    }
 
     public static final String DEFAULT_ORIGIN = "https://api.deepseek.com";
 
@@ -43,12 +52,12 @@ public final class Settings {
     }
 
     public String apiKey() {
-        String key = prefs.getString(KEY_API, "");
+        String key = Profiles.active(this).apiKey;
         return key == null ? "" : key.trim();
     }
 
     public String origin() {
-        String value = prefs.getString(KEY_ORIGIN, DEFAULT_ORIGIN);
+        String value = Profiles.active(this).origin;
         if (value == null || value.trim().isEmpty()) {
             value = DEFAULT_ORIGIN;
         }
@@ -60,7 +69,7 @@ public final class Settings {
     }
 
     public String model() {
-        String value = prefs.getString(KEY_MODEL, Prompt.DEFAULT_MODEL);
+        String value = Profiles.active(this).model;
         return value == null || value.isEmpty() || "deepseek-chat".equals(value)
             || "deepseek-reasoner".equals(value) ? Prompt.DEFAULT_MODEL : value;
     }

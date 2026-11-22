@@ -161,15 +161,14 @@ public final class Prompt {
         }
         if ("message_delta".equals(type)) {
             JSONObject delta = value.optJSONObject("delta");
-            if (delta == null) {
-                return null;
+            // Some providers send usage without a delta or without stop_reason.
+            // Preserve usage even when an unrelated delta is missing or malformed.
+            if (delta != null) {
+                String stop = stringOrNull(delta, "stop_reason");
+                if (stop == null || "end_turn".equals(stop) || "max_tokens".equals(stop)
+                    || "tool_use".equals(stop) || "refusal".equals(stop)) return value;
             }
-            String stop = delta.optString("stop_reason", "");
-            if (!"end_turn".equals(stop) && !"max_tokens".equals(stop) && !"tool_use".equals(stop)
-                && !"refusal".equals(stop)) {
-                return null;
-            }
-            return value;
+            return hasValidUsage(value.optJSONObject("usage")) ? value : null;
         }
         if ("message_stop".equals(type)) {
             return value;
@@ -333,19 +332,36 @@ public final class Prompt {
         return null;
     }
 
-    private static boolean isUsage(JSONObject usage) {
-        if (usage == null) {
-            return false;
+    private static final String[] USAGE_KEYS = {"input_tokens", "cache_creation_input_tokens",
+        "cache_read_input_tokens", "output_tokens"};
+
+    /** Accept only integral non-negative token counts representable as long. */
+    private static Long usageCount(JSONObject usage, String key) {
+        if (usage == null || !(usage.opt(key) instanceof Number)) return null;
+        try {
+            java.math.BigDecimal number = new java.math.BigDecimal(usage.opt(key).toString());
+            long count = number.longValueExact();
+            return count < 0 ? null : count;
+        } catch (RuntimeException error) { return null; }
+    }
+
+    private static boolean hasValidUsage(JSONObject usage) {
+        for (String key : USAGE_KEYS) if (usageCount(usage, key) != null) return true;
+        return false;
+    }
+
+    /** Merge only reported valid counters; initial output is a placeholder, not final usage. */
+    private static JSONObject mergeUsage(JSONObject current, JSONObject incoming, boolean initial) {
+        if (incoming == null) return current;
+        JSONObject result = current;
+        for (String key : USAGE_KEYS) {
+            if (initial && "output_tokens".equals(key)) continue;
+            Long count = usageCount(incoming, key);
+            if (count == null) continue;
+            if (result == null) result = new JSONObject();
+            try { result.put(key, count); } catch (Exception ignored) { }
         }
-        String[] keys = {"input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens",
-            "output_tokens"};
-        for (String key : keys) {
-            Object value = usage.opt(key);
-            if (!(value instanceof Number)) {
-                return false;
-            }
-        }
-        return true;
+        return result;
     }
 
     // ================================================================ 事件合并
@@ -363,9 +379,8 @@ public final class Prompt {
         if ("message_start".equals(type)) {
             JSONObject message = event.optJSONObject("message");
             JSONObject usage = message == null ? null : message.optJSONObject("usage");
-            if (isUsage(usage)) {
-                reply.usage = usage;
-            }
+            // A continuation is another API request: never mix its counters with prior usage.
+            reply.usage = mergeUsage(null, usage, true);
             return;
         }
         if ("content_block_start".equals(type)) {
@@ -432,16 +447,16 @@ public final class Prompt {
         if ("message_delta".equals(type)) {
             JSONObject delta = event.optJSONObject("delta");
             if (delta != null) {
-                reply.stopReason = delta.optString("stop_reason", null);
+                String stop = stringOrNull(delta, "stop_reason");
+                if ("end_turn".equals(stop) || "max_tokens".equals(stop)
+                    || "tool_use".equals(stop) || "refusal".equals(stop)) reply.stopReason = stop;
                 JSONObject details = delta.optJSONObject("stop_details");
                 if (details != null) {
                     reply.stopDetails = details;
                 }
             }
             JSONObject usage = event.optJSONObject("usage");
-            if (isUsage(usage)) {
-                reply.usage = usage;
-            }
+            reply.usage = mergeUsage(reply.usage, usage, false);
         }
     }
 
@@ -923,15 +938,16 @@ public final class Prompt {
         if (usage == null) {
             return "";
         }
-        Map<String, Integer> numbers = new HashMap<>();
-        String[] keys = {"input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens",
-            "output_tokens"};
-        for (String key : keys) {
-            numbers.put(key, usage.optInt(key, 0));
+        Long input = usageCount(usage, "input_tokens");
+        Long read = usageCount(usage, "cache_read_input_tokens");
+        Long write = usageCount(usage, "cache_creation_input_tokens");
+        Long output = usageCount(usage, "output_tokens");
+        String cache = "?";
+        if (read != null && write != null) {
+            try { cache = String.valueOf(Math.addExact(read, write)); }
+            catch (ArithmeticException ignored) { }
         }
-        return "in " + numbers.get("input_tokens")
-            + " / cache " + (numbers.get("cache_read_input_tokens")
-            + numbers.get("cache_creation_input_tokens"))
-            + " / out " + numbers.get("output_tokens");
+        return "in " + (input == null ? "?" : input.toString())
+            + " / cache " + cache + " / out " + (output == null ? "?" : output.toString());
     }
 }

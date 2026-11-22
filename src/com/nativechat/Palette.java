@@ -68,23 +68,16 @@ public final class Palette {
             // neutral-bluish-850
             inlineCode = Color.parseColor("#2C2C2E");
         } else {
-            bg = Color.parseColor("#FFFFFF");
-            // neutral-bluish-50
-            surface = Color.parseColor("#F9FAFB");
-            // input-major 为纯白
+            // 参照浅色界面的观感：淡蓝灰底、白卡片、弱边框、深灰字
+            bg = Color.parseColor("#F1F4FB");
+            surface = Color.parseColor("#FFFFFF");
             composer = Color.parseColor("#FFFFFF");
-            // neutral-bluish-1000
-            text = Color.parseColor("#0F1115");
-            // neutral-bluish-600
-            textDim = Color.parseColor("#81858C");
-            caption = Color.parseColor("#81858C");
-            // blue-500
-            accent = Color.parseColor("#3964FE");
-            // blue-50
-            bubbleUser = Color.parseColor("#EDF3FE");
-            // rgba(0,0,0,0.10)
-            stroke = 0x1A000000;
-            // rgba(0,0,0,0.04)
+            text = Color.parseColor("#23262F");
+            textDim = Color.parseColor("#6E7480");
+            caption = Color.parseColor("#878D99");
+            accent = Color.parseColor("#4C6EF5");
+            bubbleUser = Color.parseColor("#E9EEFB");
+            stroke = 0x11000000;
             strokeThin = 0x0A000000;
             // red-600
             error = Color.parseColor("#EC1313");
